@@ -5,32 +5,37 @@
 # Licence : GPL - http://www.fsf.org/licenses/gpl.txt
 #
 # Author        : Luke Harris
-# version       : 2011090802
+# Contributions : Elias Abacioglu
+# version       : 2014030601
 # Creation date : 1 October 2010
-# Revision date : 8 September 2011
+# Revision date : 06 March 2014
 # Description   : Nagios plugin to check CPU performance statistics.
-#               This script has been tested on the following Linux and Unix platforms:
-#		RHEL 4, RHEL 5, RHEL 6, CentOS 4, CentOS 5, CentOS 6, SUSE, Ubuntu, Debian, FreeBSD 7, AIX 5, AIX 6, and Solaris 8 (Solaris 9 & 10 *should* work too)
-#               The script is used to obtain key CPU performance statistics by executing the sar command, eg. user, system, iowait, steal, nice, idle
-#		The Nagios Threshold test is based on CPU idle percentage only, this is NOT CPU used.
-#		Support has been added for Nagios Plugin Performance Data for integration with Splunk, NagiosGrapher, PNP4Nagios, 
-#		opcp, NagioStat, PerfParse, fifo-rrd, rrd-graph, etc
+#               This script has only been tested on Ubuntu.
+#               But this script has *should* work on the following Linux and Unix platforms:
+#               RHEL/CentOS, SUSE, Ubuntu, Debian, FreeBSD => 7 and Solaris 8-10.
+#               The script is used to obtain key CPU performance statistics average over specified time by executing the
+#               sar command, eg. user, system, iowait, steal, nice, idle.
+#               The Nagios Threshold test is based on CPU idle percentage only, this is NOT CPU used.
+#               Support has been added for Nagios Plugin Performance Data for integration with Splunk, NagiosGrapher, PNP4Nagios, 
+#               opcp, NagioStat, PerfParse, fifo-rrd, rrd-graph, etc
 #
-# USAGE         : ./check_cpu_perf.sh {warning} {critical}
+#               Note: My(Elias) changes to return an average over time kind of renders the purpose of graphing useless, for that
+#                     it's best to use the original check from Luke Harris.
 #
-# Example: ./check_cpu_perf.sh 20 10
+# USAGE         : ./check_cpu_perf.sh {warning} {critical} {minutes of history}
+#
+# Example: ./check_cpu_perf.sh 20 10 45
 # OK: CPU Idle = 84.10% | CpuUser=12.99; CpuNice=0.00; CpuSystem=2.90; CpuIowait=0.01; CpuSteal=0.00; CpuIdle=84.10:20:10
 #
 # Note: the option exists to NOT test for a threshold. Specifying 0 (zero) for both warning and critical will always return an exit code of 0.
 
 
 #Ensure warning and critical limits are passed as command-line arguments
-if [ -z "$1" -o -z "$2" ]
+if [ -z "$1" -o -z "$2" -o -z "$3" ]
 then
- echo "Please include two arguments, eg."
- echo "Usage: $0 {warning} {critical}"
- echo "Example :-"
- echo "$0 20 10"
+ echo "Please include three arguments, eg."
+ echo "Usage: $0 {warning} {critical} {minutes of history}"
+ echo "Example: $0 20 10 30"
 exit 3
 fi
 
@@ -53,79 +58,19 @@ fi
 
 #Detect which OS and if it is Linux then it will detect which Linux Distribution.
 OS=`uname -s`
- 
-GetVersionFromFile()
-{
-	VERSION=`cat $1 | tr "\n" ' ' | sed s/.*VERSION.*=\ // `
-}
- 
-if [ "${OS}" = "SunOS" ] ; then
-	OS=Solaris
-	DIST=Solaris
-	ARCH=`uname -p`	
-elif [ "${OS}" = "AIX" ] ; then
-	DIST=AIX
-elif [ "${OS}" = "FreeBSD" ] ; then
-	DIST=BSD
-elif [ "${OS}" = "Linux" ] ; then
-	KERNEL=`uname -r`
-	if [ -f /etc/redhat-release ] ; then
-		DIST='RedHat'
-	elif [ -f /etc/SuSE-release ] ; then
-		DIST=`cat /etc/SuSE-release | tr "\n" ' '| sed s/VERSION.*//`
-	elif [ -f /etc/mandrake-release ] ; then
-		DIST='Mandrake'
-	elif [ -f /etc/debian_version ] ; then
-		DIST="Debian `cat /etc/debian_version`"
-	fi
-	if [ -f /etc/UnitedLinux-release ] ; then
-		DIST="${DIST}[`cat /etc/UnitedLinux-release | tr "\n" ' ' | sed s/VERSION.*//`]"
-	fi
-fi
-
-#Define package format 
-case "`echo ${DIST}|awk '{print $1}'`" in
-'RedHat')
-PACKAGE="rpm"
-;;
-'SUSE')
-PACKAGE="rpm"
-;;
-'Mandrake')
-PACKAGE="rpm"
-;;
-'Debian')
-PACKAGE="dpkg"
-;;
-'UnitedLinux')
-PACKAGE="rpm"
-;;
-'Solaris')
-PACKAGE="pkginfo"
-;;
-'AIX')
-PACKAGE="lslpp"
-;;
-'BSD')
-PACKAGE="pkg_info"
-;;
-esac
 
 #Define locale to ensure time is in 24 hour format
-LC_MONETARY=en_AU.UTF-8
-LC_NUMERIC=en_AU.UTF-8
 LC_ALL=en_AU.UTF-8
-LC_MESSAGES=en_AU.UTF-8
-LC_COLLATE=en_AU.UTF-8
-LANG=en_AU.UTF-8
-LC_TIME=en_AU.UTF-8
+
+TIME=$(date +%H:%M:%S --date="${3} min ago")
+CORES=$(cat /proc/cpuinfo | grep processor | awk '{ORS="," ; print $3}')
 
 #Collect sar output
-case "$PACKAGE" in
-'rpm')
-SARCPU=`/usr/bin/sar -P ALL|grep all|grep -v Average|tail -1`
-SYSSTATRPM=`rpm -q sysstat|awk -F\- '{print $2}'|awk -F\. '{print $1}'`
-if [ $SYSSTATRPM -gt 5 ]
+case "$OS" in
+'Linux')
+SARCPU=`/usr/bin/sar -P ALL -s ${TIME}|grep all|grep Average|tail -1`
+VERSION=`sar -V|head -1|awk '{print $3}'|awk -F\. '{print $1}'`
+if [ $VERSION -gt 5 ]
  then
   SARCPUIDLE=`echo ${SARCPU}|awk '{print $8}'|awk -F. '{print $1}'`
   CPU=`echo ${SARCPU}|awk '{print "CPU Idle = " $8 "% | " "CpuUser=" $3 "; CpuNice=" $4 "; CpuSystem=" $5 "; CpuIowait=" $6 "; CpuSteal=" $7 "; CpuIdle=" $8":20:10"}'`
@@ -134,35 +79,8 @@ if [ $SYSSTATRPM -gt 5 ]
   CPU=`echo ${SARCPU}|awk '{print "CPU Idle = " $7 "% | " "CpuUser=" $3 "; CpuNice=" $4 "; CpuSystem=" $5 "; CpuIowait=" $6 "; CpuIdle=" $7":20:10"}'`
 fi
 ;;
-'dpkg')
-SARCPU=`/usr/bin/sar -P ALL|grep all|grep -v Average|tail -1`
-SYSSTATDPKG=`dpkg -l sysstat|grep sysstat|awk '{print $3}'|awk -F\. '{print $1}'`
-if [ $SYSSTATDPKG -gt 5 ]
- then
-  SARCPUIDLE=`echo ${SARCPU}|awk '{print $8}'|awk -F. '{print $1}'`
-  CPU=`echo ${SARCPU}|awk '{print "CPU Idle = " $8 "% | " "CpuUser=" $3 "; CpuNice=" $4 "; CpuSystem=" $5 "; CpuIowait=" $6 "; CpuSteal=" $7 "; CpuIdle=" $8":20:10"}'`
- else
-  SARCPUIDLE=`echo ${SARCPU}|awk '{print $7}'|awk -F. '{print $1}'`
-  CPU=`echo ${SARCPU}|awk '{print "CPU Idle = " $7 "% | " "CpuUser=" $3 "; CpuNice=" $4 "; CpuSystem=" $5 "; CpuIowait=" $6 "; CpuIdle=" $7":20:10"}'`
-fi
-;;
-'lslpp')
-SARCPU=`/usr/sbin/sar -P ALL|grep "\-"|grep -v U|tail -2|head -1`
-SYSSTATLSLPP=`lslpp -l bos.acct|tail -1|awk '{print $2}'|awk -F\. '{print $1}'`
-if [ $SYSSTATLSLPP -gt 4 ]
- then
-  CpuPhysc=`echo ${SARCPU}|awk '{print $6}'`
-  LPARCPU=`/usr/bin/lparstat -i | grep "Maximum Capacity" | awk '{print $4}' |head -1`
-  SARCPUIDLE=`echo "scale=2;100-(${CpuPhysc}/${LPARCPU}*100)" | bc | awk -F. '{print $1}'`
-  PERFDATA=`echo ${SARCPU}|awk '{print "CpuUser=" $2 "; CpuSystem=" $3 "; CpuIowait=" $4 "; CpuPhysc=" $6 "; CpuEntc=" $7 "; CpuIdle=" $5":20:10"}'`
-  CPU=`echo "CPU Idle = "${SARCPUIDLE}"% |" ${PERFDATA}"; LparCpuIdle="${SARCPUIDLE}"; LparCpuTotal="$LPARCPU`
- else
-  echo "AIX $SYSSTATLSLPP Not Supported"
-  exit 3
-fi
-;;
-'pkginfo')
-SARCPU=`/usr/bin/sar -u|grep -v Average|tail -2|head -1`
+'SunOS')
+SARCPU=`/usr/bin/sar -u -s ${TIME}|grep Average|tail -1`
 SYSSTATPKGINFO=`pkginfo -l SUNWaccu|grep VERSION|awk '{print $2}'|awk -F\. '{print $1}'`
 if [ $SYSSTATPKGINFO -ge 11 ]
  then
@@ -173,15 +91,15 @@ if [ $SYSSTATPKGINFO -ge 11 ]
   exit 3
 fi
 ;;
-'pkg_info')
-SARCPU=`/usr/local/bin/bsdsar -u|tail -1`
-SYSSTATPKGINFO=`pkg_info | grep ^bsdsar | awk -F\- '{print $2}' | awk -F\. '{print $1}'`
-if [ $SYSSTATPKGINFO -ge 1 ]
+'FreeBSD')
+SARCPU=`/usr/local/bin/bsdsar -u -s ${TIME}|tail -1`
+VERSION=`pkg_info | grep ^bsdsar | awk -F\- '{print $2}' | awk -F\. '{print $1}'`
+if [ $VERSION -ge 1 ]
  then
   SARCPUIDLE=`echo ${SARCPU}|awk '{print $6}'`
   CPU=`echo ${SARCPU}|awk '{print "CPU Idle = " $6 "% | " "CpuUser=" $2 "; CpuSystem=" $3 "; CpuNice=" $4 "; CpuIntrpt=" $5 "; CpuIdle=" $6":20:10"}'`
  else
-  echo "BSD $SYSSTATPKGINFO Not Supported"
+  echo "FreeBSD bsdsar $VERSION Not Supported"
   exit 3
 fi
 ;;
@@ -190,8 +108,8 @@ esac
 #Display CPU Performance without alert
 if [ "$ALERT" == "false" ]
  then
-		echo "$CPU"
-		exit 0
+    echo "$CPU"
+    exit 0
  else
         ALERT=true
 fi
@@ -199,14 +117,13 @@ fi
 #Display CPU Performance with alert
 if [ ${SARCPUIDLE} -lt $2 ]
  then
-		echo "CRITICAL: $CPU"
-		exit 2
+    echo "CRITICAL: $CPU"
+    exit 2
  elif [ $SARCPUIDLE -lt $1 ]
-		 then
-		  echo "WARNING: $CPU"
-		  exit 1
+     then
+      echo "WARNING: $CPU"
+      exit 1
          else
-		  echo "OK: $CPU"
-		  exit 0
+      echo "OK: $CPU"
+      exit 0
 fi
-
