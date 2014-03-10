@@ -1,9 +1,11 @@
 check-cpu-perf
 ==============
 
-This readme needs more work.
+The script is used to obtain CPU average usage over specified time by executing the sar command;
 
-Nagios config
+The threshold is based on CPU idle percentage only, this is NOT CPU used.
+
+Your nagios config could look something like this
 
     define service{
             use                     generic-service
@@ -14,6 +16,6 @@ Nagios config
     }
 
 
-nrpe config
+Your nrpe config should look something like this
 
     command[check_cpu_perf]=/usr/lib/nagios/plugins/check_cpu_perf.sh $ARG1$ $ARG2$ $ARG3$
