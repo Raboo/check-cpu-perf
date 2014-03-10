@@ -6,9 +6,9 @@
 #
 # Author        : Luke Harris
 # Contributions : Elias Abacioglu
-# version       : 2014030601
+# version       : 2014031001
 # Creation date : 1 October 2010
-# Revision date : 06 March 2014
+# Revision date : 10 March 2014
 # Description   : Nagios plugin to check CPU performance statistics.
 #               This script has only been tested on Ubuntu.
 #               But this script has *should* work on the following Linux and Unix platforms:
@@ -25,7 +25,7 @@
 # USAGE         : ./check_cpu_perf.sh {warning} {critical} {minutes of history}
 #
 # Example: ./check_cpu_perf.sh 20 10 45
-# OK: CPU Idle = 84.10% | CpuUser=12.99; CpuNice=0.00; CpuSystem=2.90; CpuIowait=0.01; CpuSteal=0.00; CpuIdle=84.10:20:10
+# OK: CPU Idle = 95.07% | CpuUser=0.31%; CpuNice=0.00%; CpuSystem=1.11%; CpuIowait=0.27%; CpuSteal=3.24%; CpuIdle=95.07%;20;10
 #
 # Note: the option exists to NOT test for a threshold. Specifying 0 (zero) for both warning and critical will always return an exit code of 0.
 
@@ -68,36 +68,36 @@ CORES=$(cat /proc/cpuinfo | grep processor | awk '{ORS="," ; print $3}')
 #Collect sar output
 case "$OS" in
 'Linux')
-SARCPU=`/usr/bin/sar -P ALL -s ${TIME}|grep all|grep Average|tail -1`
+SARCPU=$(/usr/bin/sar -P ALL -s ${TIME}|grep all|grep Average|tail -1)
 VERSION=`sar -V|head -1|awk '{print $3}'|awk -F\. '{print $1}'`
 if [ $VERSION -gt 5 ]
  then
   SARCPUIDLE=`echo ${SARCPU}|awk '{print $8}'|awk -F. '{print $1}'`
-  CPU=`echo ${SARCPU}|awk '{print "CPU Idle = " $8 "% | " "CpuUser=" $3 "; CpuNice=" $4 "; CpuSystem=" $5 "; CpuIowait=" $6 "; CpuSteal=" $7 "; CpuIdle=" $8":20:10"}'`
+  CPU=$(echo ${SARCPU}|awk "{print \"CPU Idle = \"\$8\"% | CpuUser=\"\$3\"%; CpuNice=\"\$4\"%; CpuSystem=\"\$5\"%; CpuIowait=\"\$6\"%; CpuSteal=\"\$7\"%; CpuIdle=\"\$8\"%;${1};${2}\"}")
  else
   SARCPUIDLE=`echo ${SARCPU}|awk '{print $7}'|awk -F. '{print $1}'`
-  CPU=`echo ${SARCPU}|awk '{print "CPU Idle = " $7 "% | " "CpuUser=" $3 "; CpuNice=" $4 "; CpuSystem=" $5 "; CpuIowait=" $6 "; CpuIdle=" $7":20:10"}'`
+  CPU=$(echo ${SARCPU}|awk "{print \"CPU Idle = \"\$7\"% | CpuUser=\"\$3\"%; CpuNice=\"\$4\"%; CpuSystem=\"\$5\"%; CpuIowait=\"\$6\"%; CpuIdle=\"\$7\"%;${1};${2}\"}")
 fi
 ;;
 'SunOS')
-SARCPU=`/usr/bin/sar -u -s ${TIME}|grep Average|tail -1`
+SARCPU=$(/usr/bin/sar -u -s ${TIME}|grep Average|tail -1)
 SYSSTATPKGINFO=`pkginfo -l SUNWaccu|grep VERSION|awk '{print $2}'|awk -F\. '{print $1}'`
 if [ $SYSSTATPKGINFO -ge 11 ]
  then
   SARCPUIDLE=`echo ${SARCPU}|awk '{print $5}'`
-  CPU=`echo ${SARCPU}|awk '{print "CPU Idle = " $5 "% | " "CpuUser=" $2 "; CpuSystem=" $3 "; CpuIowait=" $4 "; CpuIdle=" $5":20:10"}'`
+  CPU=$(echo ${SARCPU}|awk "{print \"CPU Idle = \"\$5\"% | CpuUser=\"\$2\"%; CpuSystem=\"\$3\"%; CpuIowait=\"\$4\"%; CpuIdle=\"\$5\"%;${1};${2}\"}")
  else
   echo "Solaris $SYSSTATPKGINFO Not Supported"
   exit 3
 fi
 ;;
 'FreeBSD')
-SARCPU=`/usr/local/bin/bsdsar -u -s ${TIME}|tail -1`
+SARCPU=$(/usr/local/bin/bsdsar -u -s ${TIME}|tail -1)
 VERSION=`pkg_info | grep ^bsdsar | awk -F\- '{print $2}' | awk -F\. '{print $1}'`
 if [ $VERSION -ge 1 ]
  then
   SARCPUIDLE=`echo ${SARCPU}|awk '{print $6}'`
-  CPU=`echo ${SARCPU}|awk '{print "CPU Idle = " $6 "% | " "CpuUser=" $2 "; CpuSystem=" $3 "; CpuNice=" $4 "; CpuIntrpt=" $5 "; CpuIdle=" $6":20:10"}'`
+  CPU=$(echo ${SARCPU}|awk "{print \"CPU Idle = \"\$6\"% | CpuUser=\"\$2\"%; CpuSystem=\"\$3\"%; CpuNice=\"\$4\"%; CpuIntrpt=\"\$5\"%; CpuIdle=\"\$6\"%;${1};${2}\"}")
  else
   echo "FreeBSD bsdsar $VERSION Not Supported"
   exit 3
